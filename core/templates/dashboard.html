@@ -12,6 +12,15 @@
     padding: 20px;
     color: white;
     height: 100%;
+    text-decoration: none;
+    display: block;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18) !important;
+    color: white;
 }
 
 .metric-blue {
@@ -40,6 +49,12 @@
     font-weight: 600;
     margin-bottom: 15px;
 }
+
+.clickable-hint {
+    font-size: 11px;
+    opacity: 0.75;
+    margin-top: 4px;
+}
 </style>
 
 <div class="dashboard-bg">
@@ -47,17 +62,26 @@
     <!-- HEADER -->
     <div class="mb-4">
         <h4 class="fw-bold mb-1">Dashboard</h4>
-        <small class="text-muted">{{ now|date:"d M Y" }}</small>
+        <small class="text-muted">{{ today|date:"d M Y" }}</small>
+        {% if not request.user.is_super_admin and request.user.branch %}
+        <span class="badge bg-info text-dark ms-2">
+            <i class="bi bi-building me-1"></i>{{ request.user.branch.name }}
+        </span>
+        {% endif %}
     </div>
 
     <!-- METRIC CARDS -->
     <div class="row g-4 mb-4">
 
+        <!-- TODAY'S BILLS — clickable -->
         <div class="col-md-3">
-            <div class="metric-card metric-blue shadow-sm">
+            <a href="{% url 'today_bills' %}" class="metric-card metric-blue shadow-sm text-decoration-none">
                 <small>Today's Bills</small>
-                <h3 class="mt-2">{{ today_bills_count }}</h3>
-            </div>
+                <h3 class="mt-2 mb-0">{{ today_bills_count }}</h3>
+                <div class="clickable-hint">
+                    <i class="bi bi-arrow-right-circle me-1"></i>Click to view all
+                </div>
+            </a>
         </div>
 
         <div class="col-md-3">
@@ -147,8 +171,11 @@
 
     <!-- RECENT BILLS -->
     <div class="card shadow-sm border-0 mt-4">
-        <div class="card-header bg-white fw-semibold">
-            Recent Bills
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">Recent Bills</span>
+            <a href="{% url 'today_bills' %}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-list-ul me-1"></i>View Today's Bills
+            </a>
         </div>
         <div class="table-responsive">
             <table class="table mb-0">
@@ -186,7 +213,7 @@
 
 <script>
 const monthlyData = JSON.parse('{{ monthly_chart|escapejs }}');
-const dailyData = JSON.parse('{{ daily_chart|escapejs }}');
+const dailyData   = JSON.parse('{{ daily_chart|escapejs }}');
 const serviceData = JSON.parse('{{ service_chart|escapejs }}');
 
 // Monthly Chart

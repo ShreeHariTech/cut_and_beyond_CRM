@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<!-- HEADER -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h5 class="fw-bold mb-1">
+            <i class="bi bi-calendar-check me-2 text-primary"></i>Today's Bills
+        </h5>
+        <small class="text-muted">{{ today|date:"d M Y" }}</small>
+    </div>
+    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+    </a>
+</div>
+
+<!-- SUMMARY CARDS -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center p-3">
+            <small class="text-muted">Total Bills</small>
+            <h3 class="fw-bold text-primary mb-0">{{ bills|length }}</h3>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center p-3">
+            <small class="text-muted">Today's Revenue</small>
+            <h3 class="fw-bold text-success mb-0">₹ {{ total_revenue }}</h3>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm text-center p-3">
+            <small class="text-muted">Branch</small>
+            <h6 class="fw-bold text-info mb-0 mt-1">
+                {% if request.user.is_super_admin %}All Branches{% else %}{{ request.user.branch.name|default:"—" }}{% endif %}
+            </h6>
+        </div>
+    </div>
+</div>
+
+<!-- BILLS TABLE — same format as client_detail.html -->
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white fw-semibold">
+        Bill History — Today
+    </div>
+
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Send</th>
+                    <th>#</th>
+                    <th>Customer</th>
+                    <th>Date</th>
+                    <th>Services</th>
+                    <th>Total</th>
+                    <th>Payment</th>
+                    <th class="text-end">Action</th>
+                </tr>
+            </thead>
+
+            <tbody>
+            {% for bill in bills %}
+            <tr>
+                <td>
+                    <a href="https://wa.me/91{{ bill.customer.mobile }}?text={{ bill.whatsapp_message }}"
+                       target="_blank"
+                       class="btn btn-sm btn-success">
+                        WhatsApp
+                    </a>
+                </td>
+
+                <td>{{ forloop.counter }}</td>
+
+                <td>
+                    <a href="{% url 'client_detail' bill.customer.id %}" class="fw-semibold text-decoration-none">
+                        {{ bill.customer.name }}
+                    </a>
+                    <div class="small text-muted">{{ bill.customer.mobile }}</div>
+                </td>
+
+                <td>
+                    <div class="fw-semibold">{{ bill.created_at|date:"d-m-Y" }}</div>
+                    <small class="text-muted">{{ bill.created_at|date:"H:i" }}</small>
+                </td>
+
+                <td>
+                    <ul class="mb-0 ps-3">
+                        {% for item in bill.items.all %}
+                        <li>
+                            {{ item.service.name }}
+                            <span class="text-muted">
+                                (₹ {{ item.price }} – {{ item.employee.name }})
+                            </span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </td>
+
+                <td class="fw-semibold">₹ {{ bill.total_amount }}</td>
+
+                <td>
+                    {% if bill.payment_mode == 'package' %}
+                        <span class="badge bg-info text-dark">Package</span>
+                    {% elif bill.payment_mode == 'cash' %}
+                        <span class="badge bg-success">Cash</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Online</span>
+                    {% endif %}
+                </td>
+
+                <td class="text-end">
+                    <a href="{% url 'edit_bill' bill.id %}"
+                       class="btn btn-sm btn-outline-secondary me-1">Edit</a>
+
+                    <form action="{% url 'delete_bill' bill.id %}"
+                          method="POST"
+                          class="d-inline"
+                          onsubmit="return confirm('Delete this bill?');">
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+
+            {% empty %}
+            <tr>
+                <td colspan="8" class="text-center text-muted py-4">
+                    No bills generated today yet.
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+
+        </table>
+    </div>
+</div>
+
+{% endblock %}

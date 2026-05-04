@@ -48,6 +48,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Branch-level access enforcement
+    'core.middleware.BranchAccessMiddleware',
 ]
 
 ROOT_URLCONF = 'crmproject.urls'
@@ -76,11 +78,23 @@ WSGI_APPLICATION = 'crmproject.wsgi.application'
 import os
 import dj_database_url
 
-DATABASES = {
-    'default': dj_database_url.parse(
-        "postgresql://neondb_owner:npg_iHk1WvXcN6KA@ep-floral-hill-amp9kym2.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require"
-    )
-}
+_db_config = dj_database_url.parse(
+    "postgresql://neondb_owner:npg_iHk1WvXcN6KA@ep-floral-hill-amp9kym2.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require"
+)
+# Fix: Neon (serverless Postgres) suspends idle connections.
+# CONN_MAX_AGE=0  → don't cache/reuse connections (safest for serverless DBs)
+# CONN_HEALTH_CHECKS=True → ping DB before reuse if CONN_MAX_AGE > 0
+_db_config["CONN_MAX_AGE"] = 0
+_db_config["CONN_HEALTH_CHECKS"] = True
+# Keepalive options so OS detects dead connections quickly
+_db_config.setdefault("OPTIONS", {}).update({
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 5,
+})
+
+DATABASES = {"default": _db_config}
 
 AUTH_USER_MODEL = 'core.User'
 
