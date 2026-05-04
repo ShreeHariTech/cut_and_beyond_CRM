@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h5 class="mb-3">Edit Bill</h5>
+
+<form method="POST">
+{% csrf_token %}
+
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Service</th>
+            <th>Employee</th>
+            <th>Price</th>
+            <th>Action</th>
+
+        </tr>
+    </thead>
+    <tbody id="rows">
+
+{% for item in bill.items.all %}
+<tr>
+    <td>
+        <select name="service" class="form-select">
+            {% for s in services %}
+            <option value="{{ s.id }}"
+                {% if s.id == item.service.id %}selected{% endif %}>
+                {{ s.name }}
+            </option>
+            {% endfor %}
+        </select>
+    </td>
+
+    <td>
+        <select name="employee" class="form-select">
+            {% for e in employees %}
+            <option value="{{ e.id }}"
+                {% if e.id == item.employee.id %}selected{% endif %}>
+                {{ e.name }}
+            </option>
+            {% endfor %}
+        </select>
+    </td>
+
+    <td>
+        ₹ {{ item.price }}
+    </td>
+
+    <td>
+        <button type="button"
+                class="btn btn-sm btn-outline-danger"
+                onclick="removeRow(this)">
+            Remove
+        </button>
+    </td>
+</tr>
+{% endfor %}
+
+</tbody>
+
+</table>
+
+<div class="mb-3">
+    <label>Payment Mode</label>
+    <select name="payment_mode" class="form-select">
+        <option value="cash" {% if bill.payment_mode == 'cash' %}selected{% endif %}>Cash</option>
+        <option value="online" {% if bill.payment_mode == 'online' %}selected{% endif %}>Online</option>
+        <option value="package" {% if bill.payment_mode == 'package' %}selected{% endif %}>Package</option>
+    </select>
+</div>
+
+<div class="d-flex gap-2">
+    <button class="btn btn-primary">Update Bill</button>
+    <a href="{% url 'client_detail' bill.customer.id %}"
+       class="btn btn-outline-secondary">Cancel</a>
+</div>
+
+</form>
+<script>
+function removeRow(btn) {
+    btn.closest('tr').remove();
+}
+</script>
+
+
+{% endblock %}

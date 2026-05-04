@@ -1,0 +1,258 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<style>
+.dashboard-bg {
+    background: #f8f9fc;
+    padding: 10px;
+}
+
+.metric-card {
+    border-radius: 16px;
+    padding: 20px;
+    color: white;
+    height: 100%;
+}
+
+.metric-blue {
+    background: linear-gradient(135deg, #4e73df, #224abe);
+}
+
+.metric-green {
+    background: linear-gradient(135deg, #1cc88a, #13855c);
+}
+
+.metric-purple {
+    background: linear-gradient(135deg, #6f42c1, #4e2ca3);
+}
+
+.metric-orange {
+    background: linear-gradient(135deg, #f6c23e, #dda20a);
+}
+
+.chart-card {
+    border-radius: 18px;
+    padding: 20px;
+    background: #ffffff;
+}
+
+.chart-title {
+    font-weight: 600;
+    margin-bottom: 15px;
+}
+</style>
+
+<div class="dashboard-bg">
+
+    <!-- HEADER -->
+    <div class="mb-4">
+        <h4 class="fw-bold mb-1">Dashboard</h4>
+        <small class="text-muted">{{ now|date:"d M Y" }}</small>
+    </div>
+
+    <!-- METRIC CARDS -->
+    <div class="row g-4 mb-4">
+
+        <div class="col-md-3">
+            <div class="metric-card metric-blue shadow-sm">
+                <small>Today's Bills</small>
+                <h3 class="mt-2">{{ today_bills_count }}</h3>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="metric-card metric-green shadow-sm">
+                <small>This Month Services</small>
+                <h3 class="mt-2">{{ month_services }}</h3>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="metric-card metric-orange shadow-sm">
+                <small>This Month Revenue</small>
+                <h3 class="mt-2">₹ {{ month_revenue }}</h3>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="metric-card metric-purple shadow-sm">
+                <small>Top Employee</small>
+                <h5 class="mt-2">
+                    {% if top_employee %}
+                        {{ top_employee.employee__name }}
+                        ({{ top_employee.total }})
+                    {% else %}
+                        No Data
+                    {% endif %}
+                </h5>
+            </div>
+        </div>
+
+    </div>
+
+
+    <!-- LAST BILL -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <small class="text-muted">Last Bill</small>
+            {% if last_bill %}
+                <h6 class="fw-semibold mt-2 mb-1">
+                    {{ last_bill.customer.name }}
+                </h6>
+                <div class="text-muted small">
+                    ₹ {{ last_bill.total_amount }} |
+                    {{ last_bill.created_at|date:"d M Y H:i" }}
+                </div>
+            {% else %}
+                <p class="mt-2 mb-0 text-muted">No bills yet</p>
+            {% endif %}
+        </div>
+    </div>
+
+
+    <!-- CHARTS -->
+    <div class="row g-4">
+
+        <!-- Monthly Work -->
+        <div class="col-xl-8">
+            <div class="chart-card shadow-sm h-100">
+                <div class="chart-title">
+                    Month-wise Employee Work
+                </div>
+                <canvas id="monthlyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Daily Work -->
+        <div class="col-xl-4">
+            <div class="chart-card shadow-sm h-100">
+                <div class="chart-title">
+                    Today's Employee Work
+                </div>
+                <canvas id="dailyChart"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+
+    <!-- TOP SERVICES -->
+    <div class="chart-card shadow-sm mt-4">
+        <div class="chart-title">
+            Top 5 Services
+        </div>
+        <canvas id="serviceChart"></canvas>
+    </div>
+
+
+    <!-- RECENT BILLS -->
+    <div class="card shadow-sm border-0 mt-4">
+        <div class="card-header bg-white fw-semibold">
+            Recent Bills
+        </div>
+        <div class="table-responsive">
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th>Total</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bill in recent_bills %}
+                    <tr>
+                        <td>{{ bill.customer.name }}</td>
+                        <td>₹ {{ bill.total_amount }}</td>
+                        <td>{{ bill.created_at|date:"d M Y H:i" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted">
+                            No recent bills
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+const monthlyData = JSON.parse('{{ monthly_chart|escapejs }}');
+const dailyData = JSON.parse('{{ daily_chart|escapejs }}');
+const serviceData = JSON.parse('{{ service_chart|escapejs }}');
+
+// Monthly Chart
+const months = Object.keys(monthlyData);
+if (months.length > 0) {
+
+    const employees = [...new Set(
+        months.flatMap(m => Object.keys(monthlyData[m]))
+    )];
+
+    const datasets = employees.map(emp => ({
+        label: emp,
+        data: months.map(m => monthlyData[m][emp] || 0),
+        borderRadius: 6
+    }));
+
+    new Chart(document.getElementById('monthlyChart'), {
+        type: 'bar',
+        data: {
+            labels: months,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+}
+
+// Daily Chart
+if (Object.keys(dailyData).length > 0) {
+    new Chart(document.getElementById('dailyChart'), {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(dailyData),
+            datasets: [{
+                data: Object.values(dailyData),
+                backgroundColor: [
+                    '#4e73df', '#1cc88a', '#36b9cc',
+                    '#f6c23e', '#e74a3b'
+                ]
+            }]
+        }
+    });
+}
+
+// Top Services Chart
+if (Object.keys(serviceData).length > 0) {
+    new Chart(document.getElementById('serviceChart'), {
+        type: 'bar',
+        data: {
+            labels: Object.keys(serviceData),
+            datasets: [{
+                label: 'Service Count',
+                data: Object.values(serviceData),
+                backgroundColor: '#4e73df',
+                borderRadius: 6
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+}
+</script>
+
+{% endblock %}
