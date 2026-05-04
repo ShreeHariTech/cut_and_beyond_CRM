@@ -73,11 +73,13 @@ WSGI_APPLICATION = 'crmproject.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+import os
+import dj_database_url
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.parse(
+        "postgresql://neondb_owner:npg_iHk1WvXcN6KA@ep-floral-hill-amp9kym2.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require"
+    )
 }
 
 AUTH_USER_MODEL = 'core.User'
