@@ -92,15 +92,25 @@ class Employee(models.Model):
 
 
 # ─────────────────────────────────────────────
-#  SERVICE  (global — shared across all branches)
+#  SERVICE  (branch-specific — Feature 2)
 # ─────────────────────────────────────────────
 class Service(models.Model):
+    branch = models.ForeignKey(
+        Branch,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='services',
+        help_text="Leave blank to make this service available to all branches (legacy). "
+                  "Set branch for branch-specific services."
+    )
     name = models.CharField(max_length=150)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return self.name
+        branch_label = self.branch.name if self.branch else "All Branches"
+        return f"{self.name} ({branch_label})"
 
 
 # ─────────────────────────────────────────────
@@ -139,6 +149,10 @@ class Bill(models.Model):
     )
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    total_discount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="Sum of all discounts across bill items."
+    )
     payment_mode = models.CharField(max_length=20, choices=PAYMENT_CHOICES)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -153,4 +167,18 @@ class BillItem(models.Model):
     bill = models.ForeignKey(Bill, related_name='items', on_delete=models.CASCADE)
     service = models.ForeignKey(Service, on_delete=models.CASCADE)
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+    original_price = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="The service's listed price at the time of billing."
+    )
+    price = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text="The final (possibly edited) price charged to the customer."
+    )
+    discount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text="Discount applied = original_price - price (0 if no discount)."
+    )
+
+    def __str__(self):
+        return f"{self.service.name} × {self.bill}"

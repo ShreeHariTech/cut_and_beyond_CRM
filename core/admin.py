@@ -59,12 +59,31 @@ class EmployeeAdmin(admin.ModelAdmin):
 
 
 # ─────────────────────────────────────────────
-#  SERVICE
+#  SERVICE  (Feature 2: branch-specific)
 # ─────────────────────────────────────────────
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
-    list_display = ('name', 'price', 'created_at')
+    list_display = ('name', 'branch', 'price', 'created_at')
+    list_filter = ('branch',)
     search_fields = ('name',)
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_super_admin or request.user.is_superuser:
+            return qs
+        return qs.filter(branch=request.user.branch)
+
+    def save_model(self, request, obj, form, change):
+        # Branch Admins always create services for their own branch
+        if not request.user.is_super_admin and not obj.branch:
+            obj.branch = request.user.branch
+        super().save_model(request, obj, form, change)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'branch' and not request.user.is_super_admin:
+            # Branch admin can only assign to their own branch
+            kwargs['queryset'] = Branch.objects.filter(id=request.user.branch_id)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 # ─────────────────────────────────────────────
@@ -89,7 +108,7 @@ class CustomerAdmin(admin.ModelAdmin):
 class BillItemInline(admin.TabularInline):
     model = BillItem
     extra = 0
-    readonly_fields = ('service', 'employee', 'price')
+    readonly_fields = ('service', 'employee', 'original_price', 'price', 'discount')
 
 
 # ─────────────────────────────────────────────
@@ -97,7 +116,7 @@ class BillItemInline(admin.TabularInline):
 # ─────────────────────────────────────────────
 @admin.register(Bill)
 class BillAdmin(admin.ModelAdmin):
-    list_display = ('id', 'customer', 'branch', 'total_amount', 'payment_mode', 'created_at')
+    list_display = ('id', 'customer', 'branch', 'total_amount', 'total_discount', 'payment_mode', 'created_at')
     list_filter = ('branch', 'payment_mode', 'created_at')
     search_fields = ('customer__name', 'customer__mobile')
     inlines = [BillItemInline]

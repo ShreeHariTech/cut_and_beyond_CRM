@@ -44,6 +44,47 @@ def billitem_branch_qs(user):
     return qs.filter(bill__branch=user.branch)
 
 
+def service_branch_qs(user):
+    """
+    Return services visible to the logged-in user.
+    - Branch Admin: only their branch's services.
+    - Super Admin: all services.
+    """
+    if user.is_super_admin:
+        return Service.objects.all().order_by('name')
+    return Service.objects.filter(branch=user.branch).order_by('name')
+
+
+# ─────────────────────────────────────────────
+#  HELPER: build WhatsApp message for a bill
+# ─────────────────────────────────────────────
+def build_whatsapp_message(bill, customer):
+    """Build the URL-encoded WhatsApp message for a given bill."""
+    message = f"Hello {customer.name},\n\n"
+    message += "Bill Details\n"
+    message += f"Date: {bill.created_at.strftime('%d-%m-%Y %H:%M')}\n\n"
+    message += "Services:\n"
+    for item in bill.items.all():
+        message += f"• {item.service.name} (₹{item.price}) - {item.employee.name}\n"
+
+    # ── Discount section (only if any discount exists) ──
+    items_with_discount = [i for i in bill.items.all() if i.discount > 0]
+    if items_with_discount:
+        message += "\nDiscount Details:\n"
+        for item in items_with_discount:
+            message += f"• {item.service.name} Discount: ₹{item.discount}\n"
+        total_disc = sum(i.discount for i in items_with_discount)
+        message += f"\nTotal Discount: ₹{total_disc}\n"
+
+    message += f"\nTotal Amount: ₹{bill.total_amount}\n"
+    payment_text = {'package': 'Package', 'cash': 'Cash'}.get(bill.payment_mode, 'Online')
+    message += f"Payment Mode: {payment_text}\n"
+    if customer.package_amount > 0:
+        message += f"Current Package Balance: ₹{customer.package_amount}\n\n"
+    message += "Thank you for visiting"
+    return urllib.parse.quote(message)
+
+
 # ─────────────────────────────────────────────
 #  AUTH
 # ─────────────────────────────────────────────
@@ -157,38 +198,40 @@ def dashboard(request):
 
 
 # ─────────────────────────────────────────────
-#  TODAY'S BILLS — full list page
+#  TODAY'S BILLS — full list page (Feature 1: date filter)
 # ─────────────────────────────────────────────
 @login_required
 def today_bills(request):
     today = date.today()
     bill_qs = branch_qs(Bill.objects.all(), request.user)
-    bills = bill_qs.filter(created_at__date=today).select_related('customer').prefetch_related('items__service', 'items__employee').order_by('-created_at')
 
-    # Add WhatsApp message per bill (same as client_detail)
+    # ── Date filter ──
+    selected_date_str = request.GET.get('bill_date', '')
+    selected_date = parse_date(selected_date_str) if selected_date_str else None
+    filter_date = selected_date if selected_date else today
+
+    bills = (
+        bill_qs
+        .filter(created_at__date=filter_date)
+        .select_related('customer')
+        .prefetch_related('items__service', 'items__employee')
+        .order_by('-created_at')
+    )
+
+    # Attach WhatsApp message per bill
     for bill in bills:
-        customer = bill.customer
-        message = f"Hello {customer.name},\n\n"
-        message += "Bill Details\n"
-        message += f"Date: {bill.created_at.strftime('%d-%m-%Y %H:%M')}\n\n"
-        message += "Services:\n"
-        for item in bill.items.all():
-            message += f"• {item.service.name} (₹{item.price}) - {item.employee.name}\n"
-        message += f"\nTotal Amount: ₹{bill.total_amount}\n"
-        payment_text = {'package': 'Package', 'cash': 'Cash'}.get(bill.payment_mode, 'Online')
-        message += f"Payment Mode: {payment_text}\n"
-        # ✅ Condition applied here
-        if customer.package_amount > 0:
-            message += f"Current Package Balance: ₹{customer.package_amount}\n\n"
-        message += "Thank you for visiting"
-        bill.whatsapp_message = urllib.parse.quote(message)
+        bill.whatsapp_message = build_whatsapp_message(bill, bill.customer)
 
     total_revenue = bills.aggregate(total=Sum('total_amount'))['total'] or 0
+    total_discount = bills.aggregate(total=Sum('total_discount'))['total'] or 0
 
     return render(request, 'today_bills.html', {
         'bills': bills,
         'today': today,
+        'filter_date': filter_date,
+        'selected_date': selected_date_str,
         'total_revenue': total_revenue,
+        'total_discount': total_discount,
     })
 
 
@@ -407,49 +450,81 @@ def delete_employee(request, id):
 
 
 # ─────────────────────────────────────────────
-#  SERVICE (global, no branch filter)
+#  SERVICE (Feature 2: branch-specific)
 # ─────────────────────────────────────────────
 @login_required
 def service(request):
-    services = Service.objects.all().order_by('-id')
+    # Branch Admins only see their own branch services
+    services = service_branch_qs(request.user).order_by('-id')
+    branches = Branch.objects.filter(is_active=True) if request.user.is_super_admin else None
+
     if request.method == "POST":
         name = request.POST.get('name')
         price = request.POST.get('price')
         if not name or not price:
             messages.error(request, "All fields are required")
         else:
-            Service.objects.create(name=name, price=price)
+            # Super Admin can pick a branch; Branch Admin uses their own branch
+            if request.user.is_super_admin:
+                branch_id = request.POST.get('branch')
+                branch = Branch.objects.get(id=branch_id) if branch_id else None
+            else:
+                branch = request.user.branch
+
+            Service.objects.create(name=name, price=price, branch=branch)
             messages.success(request, "Service added successfully")
             return redirect('service')
-    return render(request, 'service.html', {'services': services})
+
+    return render(request, 'service.html', {
+        'services': services,
+        'branches': branches,
+    })
 
 
 @login_required
 def edit_service(request, id):
     service_obj = get_object_or_404(Service, id=id)
+    # Branch admin can only edit their own branch services
+    if not request.user.is_super_admin and service_obj.branch != request.user.branch:
+        messages.error(request, "You do not have permission to edit this service.")
+        return redirect('service')
+
+    branches = Branch.objects.filter(is_active=True) if request.user.is_super_admin else None
+
     if request.method == "POST":
         service_obj.name = request.POST.get('name')
         service_obj.price = request.POST.get('price')
+        if request.user.is_super_admin:
+            branch_id = request.POST.get('branch')
+            service_obj.branch = Branch.objects.get(id=branch_id) if branch_id else None
         service_obj.save()
         messages.success(request, "Service updated successfully")
         return redirect('service')
-    return render(request, 'edit_service.html', {'service': service_obj})
+
+    return render(request, 'edit_service.html', {
+        'service': service_obj,
+        'branches': branches,
+    })
 
 
 @login_required
 def delete_service(request, id):
     service_obj = get_object_or_404(Service, id=id)
+    # Branch admin can only delete their own branch services
+    if not request.user.is_super_admin and service_obj.branch != request.user.branch:
+        messages.error(request, "You do not have permission to delete this service.")
+        return redirect('service')
     service_obj.delete()
     messages.success(request, "Service deleted successfully")
     return redirect('service')
 
 
 # ─────────────────────────────────────────────
-#  GENERATE BILL
+#  GENERATE BILL (Feature 2 + Feature 3: branch services + editable price + discount)
 # ─────────────────────────────────────────────
 @login_required
 def generate_bill(request):
-    services = Service.objects.all()
+    services = service_branch_qs(request.user)
     employees = branch_qs(Employee.objects.all(), request.user)
 
     if request.method == "POST":
@@ -462,7 +537,7 @@ def generate_bill(request):
         total = float(data['total'])
 
         # Determine the branch for this bill
-        bill_branch = request.user.branch  # None for super admin (or could be chosen)
+        bill_branch = request.user.branch  # None for super admin
 
         # Get or create customer scoped to branch
         customer, created = Customer.objects.get_or_create(
@@ -481,21 +556,35 @@ def generate_bill(request):
             customer.package_amount -= Decimal(total)
             customer.save()
 
+        # Calculate total discount across all items
+        total_discount = Decimal('0')
+        for item in items:
+            orig = Decimal(str(item.get('original_price', item['price'])))
+            final = Decimal(str(item['price']))
+            disc = orig - final if orig > final else Decimal('0')
+            total_discount += disc
+
         # Create Bill
         bill = Bill.objects.create(
             customer=customer,
             total_amount=total,
+            total_discount=total_discount,
             payment_mode=payment_mode,
             branch=bill_branch,
         )
 
-        # Bill Items
+        # Bill Items — store original_price, final price, discount
         for item in items:
+            orig = Decimal(str(item.get('original_price', item['price'])))
+            final = Decimal(str(item['price']))
+            disc = orig - final if orig > final else Decimal('0')
             BillItem.objects.create(
                 bill=bill,
                 service_id=item['service'],
                 employee_id=item['employee'],
-                price=item['price']
+                original_price=orig,
+                price=final,
+                discount=disc,
             )
 
         return JsonResponse({
@@ -556,19 +645,7 @@ def client_detail(request, id):
         bills = bills.filter(created_at__date__lte=parse_date(to_date))
 
     for bill in bills:
-        message = f"Hello {customer.name},\n\n"
-        message += f"Bill Details\n"
-        message += f"Date: {bill.created_at.strftime('%d-%m-%Y %H:%M')}\n\n"
-        message += "Services:\n"
-        for item in bill.items.all():
-            message += f"• {item.service.name} (₹{item.price}) - {item.employee.name}\n"
-        message += f"\nTotal Amount: ₹{bill.total_amount}\n"
-        payment_text = {'package': 'Package', 'cash': 'Cash'}.get(bill.payment_mode, 'Online')
-        message += f"Payment Mode: {payment_text}\n"
-        if customer.package_amount > 0:
-            message += f"Current Package Balance: ₹{customer.package_amount}\n\n"
-        message += "Thank you for visiting"
-        bill.whatsapp_message = urllib.parse.quote(message)
+        bill.whatsapp_message = build_whatsapp_message(bill, customer)
 
     return render(request, 'client_detail.html', {
         'customer': customer,
@@ -594,14 +671,14 @@ def add_package(request, id):
 
 
 # ─────────────────────────────────────────────
-#  EDIT BILL
+#  EDIT BILL (Feature 3: editable price + discount)
 # ─────────────────────────────────────────────
 @login_required
 @branch_access_required(Bill)
 def edit_bill(request, id):
     bill = get_object_or_404(Bill, id=id)
     customer = bill.customer
-    services = Service.objects.all()
+    services = service_branch_qs(request.user)
     employees = branch_qs(Employee.objects.all(), request.user)
 
     old_payment = bill.payment_mode
@@ -613,16 +690,32 @@ def edit_bill(request, id):
 
         bill.items.all().delete()
         total = Decimal('0')
+        total_discount = Decimal('0')
 
         service_ids = request.POST.getlist('service')
         employee_ids = request.POST.getlist('employee')
+        prices = request.POST.getlist('price')
 
         for i in range(len(service_ids)):
             svc = Service.objects.get(id=service_ids[i])
             emp = Employee.objects.get(id=employee_ids[i])
-            price = svc.price
-            total += price
-            BillItem.objects.create(bill=bill, service=svc, employee=emp, price=price)
+            orig_price = svc.price
+            # Use submitted price (editable), fallback to service price
+            try:
+                final_price = Decimal(str(prices[i])) if prices[i] else orig_price
+            except Exception:
+                final_price = orig_price
+            disc = orig_price - final_price if orig_price > final_price else Decimal('0')
+            total += final_price
+            total_discount += disc
+            BillItem.objects.create(
+                bill=bill,
+                service=svc,
+                employee=emp,
+                original_price=orig_price,
+                price=final_price,
+                discount=disc,
+            )
 
         new_payment = request.POST.get('payment_mode')
         if new_payment == 'package':
@@ -632,6 +725,7 @@ def edit_bill(request, id):
             customer.package_amount -= total
 
         bill.total_amount = total
+        bill.total_discount = total_discount
         bill.payment_mode = new_payment
         bill.save()
         customer.save()

@@ -27,7 +27,9 @@
 <tr>
 <th>Service</th>
 <th>Employee</th>
-<th>Price</th>
+<th>Original Price (₹)</th>
+<th>Final Price (₹)</th>
+<th>Discount (₹)</th>
 <th></th>
 </tr>
 </thead>
@@ -41,8 +43,12 @@
        class="form-control"
        readonly>
 
-
-<h5 class="mt-3">Total: ₹ <span id="total">0</span></h5>
+<h5 class="mt-3">
+    Total: ₹ <span id="total">0</span>
+    <span id="discountSummary" class="text-warning small ms-2" style="display:none;">
+        (Discount: ₹ <span id="totalDiscount">0</span>)
+    </span>
+</h5>
 
 <select id="payment" class="form-select mt-2" onchange="checkPackage()">
 <option value="cash">Cash</option>
@@ -64,7 +70,7 @@ function addRow() {
         <select class="form-select service" onchange="updatePrice(this)">
             <option value="">Select</option>
             {% for s in services %}
-            <option value="{{ s.id }}" data-price="{{ s.price }}">{{ s.name }}</option>
+            <option value="{{ s.id }}" data-price="{{ s.price }}">{{ s.name }} (₹{{ s.price }})</option>
             {% endfor %}
         </select>
     </td>
@@ -75,40 +81,92 @@ function addRow() {
             {% endfor %}
         </select>
     </td>
-    <td class="price">0</td>
+    <td class="original-price text-muted">0</td>
     <td>
-            <button class="btn btn-sm btn-danger"
-                onclick="this.closest('tr').remove();calcTotal()">
-                ×
-            </button>
+        <input type="number" class="form-control final-price" value="0" min="0" step="0.01"
+               oninput="recalcRow(this); calcTotal();">
+    </td>
+    <td class="discount text-warning fw-semibold">0</td>
+    <td>
+        <button class="btn btn-sm btn-danger"
+            onclick="this.closest('tr').remove(); calcTotal()">
+            ×
+        </button>
     </td>
     `;
     document.querySelector('#billTable tbody').appendChild(row);
 }
 
 function updatePrice(sel) {
-    let price = sel.options[sel.selectedIndex].dataset.price || 0;
-    sel.closest('tr').querySelector('.price').innerText = price;
+    let price = parseFloat(sel.options[sel.selectedIndex].dataset.price) || 0;
+    let row = sel.closest('tr');
+    row.querySelector('.original-price').innerText = price;
+    row.querySelector('.final-price').value = price;
+    row.querySelector('.discount').innerText = 0;
     calcTotal();
+}
+
+function recalcRow(input) {
+    let row = input.closest('tr');
+    let orig = parseFloat(row.querySelector('.original-price').innerText) || 0;
+    let final = parseFloat(input.value) || 0;
+    let disc = orig > final ? (orig - final).toFixed(2) : 0;
+    row.querySelector('.discount').innerText = disc;
 }
 
 function calcTotal() {
     total = 0;
-    document.querySelectorAll('.price').forEach(p => {
-        total += Number(p.innerText);
+    let totalDiscount = 0;
+    document.querySelectorAll('#billTable tbody tr').forEach(tr => {
+        let fp = parseFloat(tr.querySelector('.final-price').value) || 0;
+        let disc = parseFloat(tr.querySelector('.discount').innerText) || 0;
+        total += fp;
+        totalDiscount += disc;
     });
-    document.getElementById('total').innerText = total;
+    document.getElementById('total').innerText = total.toFixed(2);
+
+    const discSummary = document.getElementById('discountSummary');
+    if (totalDiscount > 0) {
+        document.getElementById('totalDiscount').innerText = totalDiscount.toFixed(2);
+        discSummary.style.display = 'inline';
+    } else {
+        discSummary.style.display = 'none';
+    }
+}
+
+function clearForm() {
+    document.getElementById('name').value = '';
+    document.getElementById('mobile').value = '';
+    document.getElementById('package_balance').value = '';
+    document.querySelector('#billTable tbody').innerHTML = '';
+    total = 0;
+    document.getElementById('total').innerText = '0';
+    document.getElementById('discountSummary').style.display = 'none';
 }
 
 function saveBill() {
     let items = [];
+    let valid = true;
     document.querySelectorAll('#billTable tbody tr').forEach(tr => {
+        const serviceId = tr.querySelector('.service').value;
+        if (!serviceId) { valid = false; return; }
         items.push({
-            service: tr.querySelector('.service').value,
+            service: serviceId,
             employee: tr.querySelector('.employee').value,
-            price: tr.querySelector('.price').innerText
+            original_price: tr.querySelector('.original-price').innerText,
+            price: tr.querySelector('.final-price').value
         });
     });
+
+    if (!valid) {
+        alert('Please select a service for every row.');
+        return;
+    }
+
+    if (items.length === 0) {
+        alert('Please add at least one service.');
+        return;
+    }
 
     fetch('/generate-bill/', {
         method: 'POST',

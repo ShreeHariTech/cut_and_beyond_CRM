@@ -5,13 +5,42 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h5 class="fw-bold mb-1">
-            <i class="bi bi-calendar-check me-2 text-primary"></i>Today's Bills
+            <i class="bi bi-calendar-check me-2 text-primary"></i>
+            {% if selected_date %}Bills — {{ filter_date|date:"d M Y" }}{% else %}Today's Bills{% endif %}
         </h5>
-        <small class="text-muted">{{ today|date:"d M Y" }}</small>
+        <small class="text-muted">{{ filter_date|date:"d M Y" }}</small>
     </div>
     <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
     </a>
+</div>
+
+<!-- DATE FILTER -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold">
+                    <i class="bi bi-calendar3 me-1"></i>Filter by Date
+                </label>
+                <input type="date"
+                       name="bill_date"
+                       id="bill_date"
+                       value="{{ selected_date }}"
+                       class="form-control">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100" type="submit">
+                    <i class="bi bi-search me-1"></i>Filter
+                </button>
+            </div>
+            <div class="col-md-2">
+                <a href="{% url 'today_bills' %}" class="btn btn-outline-secondary w-100">
+                    <i class="bi bi-x-circle me-1"></i>Today
+                </a>
+            </div>
+        </form>
+    </div>
 </div>
 
 <!-- SUMMARY CARDS -->
@@ -24,13 +53,15 @@
     </div>
     <div class="col-sm-4">
         <div class="card border-0 shadow-sm text-center p-3">
-            <small class="text-muted">Today's Revenue</small>
+            <small class="text-muted">Revenue</small>
             <h3 class="fw-bold text-success mb-0">₹ {{ total_revenue }}</h3>
         </div>
     </div>
     <div class="col-sm-4">
         <div class="card border-0 shadow-sm text-center p-3">
-            <small class="text-muted">Branch</small>
+            <small class="text-muted">
+                {% if request.user.is_super_admin %}All Branches{% else %}Branch{% endif %}
+            </small>
             <h6 class="fw-bold text-info mb-0 mt-1">
                 {% if request.user.is_super_admin %}All Branches{% else %}{{ request.user.branch.name|default:"—" }}{% endif %}
             </h6>
@@ -41,7 +72,13 @@
 <!-- BILLS TABLE — same format as client_detail.html -->
 <div class="card shadow-sm border-0">
     <div class="card-header bg-white fw-semibold">
-        Bill History — Today
+        Bill History —
+        {% if selected_date %}{{ filter_date|date:"d M Y" }}{% else %}Today{% endif %}
+        {% if total_discount > 0 %}
+        <span class="badge bg-warning text-dark ms-2">
+            <i class="bi bi-tag me-1"></i>Total Discount: ₹{{ total_discount }}
+        </span>
+        {% endif %}
     </div>
 
     <div class="table-responsive">
@@ -92,12 +129,24 @@
                             <span class="text-muted">
                                 (₹ {{ item.price }} – {{ item.employee.name }})
                             </span>
+                            {% if item.discount > 0 %}
+                            <span class="badge bg-warning text-dark ms-1" title="Discount">
+                                -₹{{ item.discount }}
+                            </span>
+                            {% endif %}
                         </li>
                         {% endfor %}
                     </ul>
                 </td>
 
-                <td class="fw-semibold">₹ {{ bill.total_amount }}</td>
+                <td class="fw-semibold">
+                    ₹ {{ bill.total_amount }}
+                    {% if bill.total_discount > 0 %}
+                    <div class="small text-warning">
+                        <i class="bi bi-tag-fill me-1"></i>-₹{{ bill.total_discount }} off
+                    </div>
+                    {% endif %}
+                </td>
 
                 <td>
                     {% if bill.payment_mode == 'package' %}
@@ -126,7 +175,8 @@
             {% empty %}
             <tr>
                 <td colspan="8" class="text-center text-muted py-4">
-                    No bills generated today yet.
+                    <i class="bi bi-calendar-x me-2"></i>
+                    No bills found for {{ filter_date|date:"d M Y" }}.
                 </td>
             </tr>
             {% endfor %}
