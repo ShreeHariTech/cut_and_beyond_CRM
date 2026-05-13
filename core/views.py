@@ -65,7 +65,7 @@ def build_whatsapp_message(bill, customer):
     message += f"Date: {bill.created_at.strftime('%d-%m-%Y %H:%M')}\n\n"
     message += "Services:\n"
     for item in bill.items.all():
-        message += f"• {item.service.name} (₹{item.price}) - {item.employee.name}\n"
+        message += f"• {item.service.name} (₹{item.price})\n"
 
     # ── Discount section (only if any discount exists) ──
     items_with_discount = [i for i in bill.items.all() if i.discount > 0]
