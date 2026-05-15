@@ -19,7 +19,7 @@
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-body">
         <form method="GET" class="row g-3 align-items-end">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label small fw-semibold">
                     <i class="bi bi-calendar3 me-1"></i>Filter by Date
                 </label>
@@ -29,6 +29,19 @@
                        value="{{ selected_date }}"
                        class="form-control">
             </div>
+            {% if request.user.is_super_admin %}
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold">
+                    <i class="bi bi-building me-1"></i>Filter by Branch
+                </label>
+                <select name="branch_id" class="form-select">
+                    <option value="">All Branches</option>
+                    {% for b in branches %}
+                    <option value="{{ b.id }}" {% if selected_branch == b.id|stringformat:"s" %}selected{% endif %}>{{ b.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div class="col-md-2">
                 <button class="btn btn-primary w-100" type="submit">
                     <i class="bi bi-search me-1"></i>Filter
@@ -36,7 +49,7 @@
             </div>
             <div class="col-md-2">
                 <a href="{% url 'today_bills' %}" class="btn btn-outline-secondary w-100">
-                    <i class="bi bi-x-circle me-1"></i>Today
+                    <i class="bi bi-x-circle me-1"></i>Clear
                 </a>
             </div>
         </form>

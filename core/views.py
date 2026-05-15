@@ -204,11 +204,17 @@ def dashboard(request):
 def today_bills(request):
     today = date.today()
     bill_qs = branch_qs(Bill.objects.all(), request.user)
+    branches = Branch.objects.filter(is_active=True) if request.user.is_super_admin else None
 
     # ── Date filter ──
     selected_date_str = request.GET.get('bill_date', '')
     selected_date = parse_date(selected_date_str) if selected_date_str else None
     filter_date = selected_date if selected_date else today
+
+    # ── Branch filter ──
+    selected_branch = request.GET.get('branch_id', '')
+    if request.user.is_super_admin and selected_branch:
+        bill_qs = bill_qs.filter(branch_id=selected_branch)
 
     bills = (
         bill_qs
@@ -232,6 +238,8 @@ def today_bills(request):
         'selected_date': selected_date_str,
         'total_revenue': total_revenue,
         'total_discount': total_discount,
+        'branches': branches,
+        'selected_branch': selected_branch,
     })
 
 
@@ -621,10 +629,20 @@ def customer_search(request):
 @login_required
 def client_list(request):
     customers = branch_qs(Customer.objects.all(), request.user).order_by('name')
+    branches = Branch.objects.filter(is_active=True) if request.user.is_super_admin else None
+    selected_branch = request.GET.get('branch_id', '')
+
+    if request.user.is_super_admin and selected_branch:
+        customers = customers.filter(branch_id=selected_branch)
+
     paginator = Paginator(customers, 10)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
-    return render(request, 'clients.html', {'page_obj': page_obj})
+    return render(request, 'clients.html', {
+        'page_obj': page_obj,
+        'branches': branches,
+        'selected_branch': selected_branch,
+    })
 
 
 # ─────────────────────────────────────────────

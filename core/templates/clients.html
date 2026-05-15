@@ -1,7 +1,19 @@
 {% extends 'base.html' %}
 {% block content %}
 
-<h5 class="mb-3">Clients</h5>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">Clients</h5>
+    {% if request.user.is_super_admin %}
+    <form method="GET" class="d-flex">
+        <select name="branch_id" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">All Branches</option>
+            {% for b in branches %}
+            <option value="{{ b.id }}" {% if selected_branch == b.id|stringformat:"s" %}selected{% endif %}>{{ b.name }}</option>
+            {% endfor %}
+        </select>
+    </form>
+    {% endif %}
+</div>
 
 <!-- SEARCH INPUT -->
 <div class="mb-3">
@@ -63,7 +75,7 @@
         {% if page_obj.has_previous %}
         <li class="page-item">
             <a class="page-link"
-               href="?page={{ page_obj.previous_page_number }}">
+               href="?page={{ page_obj.previous_page_number }}{% if selected_branch %}&branch_id={{ selected_branch }}{% endif %}">
                Previous
             </a>
         </li>
@@ -77,7 +89,7 @@
             {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
                 <li class="page-item">
                     <a class="page-link"
-                       href="?page={{ num }}">{{ num }}</a>
+                       href="?page={{ num }}{% if selected_branch %}&branch_id={{ selected_branch }}{% endif %}">{{ num }}</a>
                 </li>
             {% endif %}
         {% endfor %}
@@ -85,7 +97,7 @@
         {% if page_obj.has_next %}
         <li class="page-item">
             <a class="page-link"
-               href="?page={{ page_obj.next_page_number }}">
+               href="?page={{ page_obj.next_page_number }}{% if selected_branch %}&branch_id={{ selected_branch }}{% endif %}">
                Next
             </a>
         </li>
